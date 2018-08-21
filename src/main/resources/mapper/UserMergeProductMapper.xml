@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="mybatis.UserMergeProductMapper">
+
+    <resultMap id="productsActivity" type="dao.ProductsActivity">
+        <result property="productId" column="userId" />
+        <result property="activityStartDate" column="activityStartDate"/>
+        <result property="activityEndDate" column="activityEndDate"/>
+    </resultMap>
+
+    <resultMap id="productsPurchasedByUser" type="dao.ProductsPurchasedByUser" >
+        <result property="userId" column="userId"/>
+        <result property="prodcutId" column="prodcutId"/>
+    </resultMap>
+
+    <resultMap id="userBuyProductsInfo" type="dao.UserBuyProductsInfo">
+        <result property="userId" column="userId"/>
+        <result property="productId" column="productId"/>
+        <result property="tradeDate" column="tradeDate"/>
+        <result property="quantity" column="quantity"/>
+    </resultMap>
+
+    <resultMap id="userCollectProduct" type="dao.UserCollectProduct">
+        <result property="userId" column="userId"/>
+        <result property="productId" column="productId"/>
+    </resultMap>
+
+    <resultMap id="userJoinActivity" type="dao.UserJoinActivity">
+        <result property="userId" column="userId"/>
+        <result property="productId" column="productId"/>
+        <result property="dateOfPurchase" column="dateOfPurchase"/>
+        <result property="promotionsId" column="promotionsId"/>
+    </resultMap>
+
+    <resultMap id="userPurchasedProductTime" type="dao.UserPurchasedProductTime">
+        <result property="userId" column="userId"/>
+        <result property="productId" column="productId"/>
+        <result property="purchasedMoth" column="purchasedMoth"/>
+        <result property="purchasedStartTime" column="purchasedStartTime"/>
+        <result property="purchaseEndTime" column="purchaseEndTime"/>
+    </resultMap>
+
+    <select id="getProductsPurchasedByUserInfo" resultMap="productsPurchasedByUser">
+
+SELECT
+  a.userId,
+  a.prodcutId
+FROM
+(SELECT
+	ts.s_org_uuid 'userId',
+	tsd.s_sku_uuid 'prodcutId',
+  COUNT(DISTINCT ts.s_sale_id) orders
+FROM
+	tbusiness_sale ts,
+	tbusiness_sale_detail tsd,
+  (
+SELECT
+ ts.s_uuid s_sale_uuid,
+ MAX(tspo.dt_create_date) dt_create_date
+FROM
+tbusiness_sale ts,
+tbusiness_sale_pay_order tspo
+WHERE
+ ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_pay_status = "1101"
+AND tspo.s_status = "1101"
+GROUP BY
+  ts.s_uuid
+) tspo
+WHERE
+	ts.s_pay_status = "1101"
+AND ts.s_uuid = tsd.s_sale_uuid
+AND ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c" /*去除测试经销商*/
+AND DATE_FORMAT(tspo.dt_create_date,"%Y-%m") >= DATE_FORMAT(DATE_SUB(NOW(),INTERVAL 6 MONTH),"%Y-%m")
+GROUP BY
+	ts.s_org_uuid,
+	tsd.s_sku_uuid
+) a
+WHERE  a.orders >= 2
+
+    </select>
+
+    <select id="getUserBuyProductsInfo" resultMap="userBuyProductsInfo">
+
+SELECT
+  ts.s_org_uuid 'userId',
+  tsd.s_sku_uuid 'productId',
+  DATE_FORMAT(tspo.dt_create_date,"%Y-%m") 'tradeDate',
+  SUM(tsd.n_quantity) 'quantity'
+FROM
+tbusiness_sale ts,
+tbusiness_sale_detail tsd,
+(
+SELECT
+ ts.s_uuid s_sale_uuid,
+ MAX(tspo.dt_create_date) dt_create_date
+FROM
+tbusiness_sale ts,
+tbusiness_sale_pay_order tspo
+WHERE
+ ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_pay_status = "1101"
+AND tspo.s_status = "1101"
+GROUP BY
+  ts.s_uuid
+) tspo
+WHERE
+ ts.s_pay_status = "1101"
+AND ts.s_uuid = tsd.s_sale_uuid
+AND ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c"
+GROUP BY
+  ts.s_org_uuid,
+  tsd.s_sku_uuid,
+  DATE_FORMAT(tspo.dt_create_date,"%Y-%m")
+
+    </select>
+
+
+    <select id="getProductsActivityInfo" resultMap="productsActivity">
+
+SELECT
+  DISTINCT
+  a.s_sku_uuid 'productUuid',
+  a.dt_promotion_create_date 'activityStartDate',
+  a.dt_promotion_end_date 'activityEndDate'
+FROM
+(SELECT
+ tp.s_uuid,
+ tp.dt_promotion_create_date,
+ tp.dt_promotion_end_date,
+ tpp.s_sku_uuid
+FROM
+tbusiness_promotions tp,
+tbusiness_promotions_preferential  tpp
+WHERE
+ tp.s_status = "VALID"
+AND tp.s_uuid = tpp.s_promotions_uuid
+AND tpp.s_status = "VALID"
+AND tp.s_create_user != '9b5ef317-664c-4352-b6ab-12d00d29c723' /*创建人不能是测试厂商*/
+UNION ALL
+SELECT
+ tp.s_uuid,
+ tp.dt_promotion_create_date,
+ tp.dt_promotion_end_date,
+ tpad.s_sku_uuid
+FROM
+tbusiness_promotions tp,
+tbusiness_promotions_details tpd,
+tbusiness_promotions_assemblage tpa,
+tbusiness_promotions_assemblage_details tpad
+WHERE
+ tp.s_status = "VALID"
+AND tpd.s_status = "VALID"
+AND tp.s_uuid = tpd.s_promotions_uuid
+AND tpd.s_assemblage_uuid = tpa.s_uuid
+AND tpa.s_status = "VALID"
+AND tpa.s_uuid = tpad.s_assemblage_uuid
+AND tpad.s_status = "VALID"
+AND tp.s_create_user != '9b5ef317-664c-4352-b6ab-12d00d29c723' /*创建人不能是测试厂商*/
+) a
+
+    </select>
+
+
+    <select id="getUserJoinActivityInfo" resultMap="userJoinActivity">
+
+SELECT
+ ts.s_org_uuid 'userId',
+ tsd.s_sku_uuid 'productId',
+ DATE_FORMAT(tspo.dt_create_date,"%Y-%m") 'dateOfPurchase',
+ tspr.s_promotions_uuid 'promotionsId'
+FROM
+tbusiness_sale_promotions_record tspr,
+tbusiness_sale ts,
+tbusiness_sale_detail tsd,
+(
+SELECT
+ ts.s_uuid s_sale_uuid,
+ MAX(tspo.dt_create_date) dt_create_date
+FROM
+tbusiness_sale ts,
+tbusiness_sale_pay_order tspo
+WHERE
+ ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_pay_status = "1101"
+AND tspo.s_status = "1101"
+GROUP BY
+  ts.s_uuid
+) tspo
+WHERE
+ tspr.s_sale_uuid = ts.s_uuid
+AND tspr.s_sale_detail_uuid = tsd.s_uuid
+AND ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c"  /*去除测试经销商*/
+
+    </select>
+
+    <select id="getSystemStartTime" resultType="java.lang.String">
+
+SELECT
+ MIN(DATE_FORMAT(tspo.dt_create_date,"%Y-%m")) 'startDate'
+FROM
+tbusiness_sale ts,
+(
+SELECT
+ ts.s_uuid s_sale_uuid,
+ MAX(tspo.dt_create_date) dt_create_date
+FROM
+tbusiness_sale ts,
+tbusiness_sale_pay_order tspo
+WHERE
+ ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_pay_status = "1101"
+AND tspo.s_status = "1101"
+GROUP BY
+  ts.s_uuid
+) tspo
+WHERE
+ ts.s_pay_status = "1101"
+AND ts.s_uuid = tspo.s_sale_uuid
+
+    </select>
+
+    <select id="getUserPurchasedProductTimeInfo" resultMap="userPurchasedProductTime">
+
+SELECT
+  ts.s_org_uuid 'userId',
+  tsd.s_sku_uuid 'productId',
+  DATE_FORMAT(tspo.dt_create_date,"%Y-%m") 'purchasedMoth',
+  MIN(DATE_FORMAT(tspo.dt_create_date,"%Y-%m-%d")) 'purchasedStartTime',
+  MAX(DATE_FORMAT(tspo.dt_create_date,"%Y-%m-%d")) 'purchaseEndTime'
+FROM
+tbusiness_sale ts,
+tbusiness_sale_detail tsd,
+(
+SELECT
+ ts.s_uuid s_sale_uuid,
+ MAX(tspo.dt_create_date) dt_create_date
+FROM
+tbusiness_sale ts,
+tbusiness_sale_pay_order tspo
+WHERE
+ ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_pay_status = "1101"
+AND tspo.s_status = "1101"
+GROUP BY
+  ts.s_uuid
+) tspo
+WHERE
+ ts.s_pay_status = "1101"
+AND ts.s_uuid = tsd.s_sale_uuid
+AND ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c"
+GROUP BY
+  ts.s_org_uuid,
+  tsd.s_sku_uuid,
+  DATE_FORMAT(tspo.dt_create_date,"%Y-%m")
+
+    </select>
+
+    <select id="getUserPurchasedProductQuantity" resultType="java.util.Map">
+
+SELECT
+	ts.s_org_uuid 'userId',
+	tsd.s_sku_uuid 'prodcutId',
+  COUNT(ts.s_sale_id) 'orders',
+	SUM(tsd.n_quantity) 'quantity'
+FROM
+	tbusiness_sale ts,
+	tbusiness_sale_detail tsd,
+(
+SELECT
+ ts.s_uuid s_sale_uuid,
+ MAX(tspo.dt_create_date) dt_create_date
+FROM
+tbusiness_sale ts,
+tbusiness_sale_pay_order tspo
+WHERE
+ ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_pay_status = "1101"
+AND tspo.s_status = "1101"
+GROUP BY
+  ts.s_uuid
+) tspo
+WHERE
+	ts.s_pay_status = "1101"
+AND ts.s_uuid = tsd.s_sale_uuid
+AND ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c" /*去除测试经销商*/
+AND DATE_FORMAT(tspo.dt_create_date,"%Y-%m") >= DATE_FORMAT(DATE_SUB(NOW(),INTERVAL 6 MONTH),"%Y-%m")
+GROUP BY
+ 	ts.s_org_uuid,
+	tsd.s_sku_uuid
+
+    </select>
+
+
+    <select id="getUserId2UserValue" resultType="java.util.Map">
+
+SELECT
+   a.userId,
+  (@i:=@i+1) 'uservalue'
+FROM
+(SELECT
+  DISTINCT
+	ts.s_org_uuid 'userId'
+FROM
+	tbusiness_sale ts,
+	tbusiness_sale_detail tsd
+WHERE
+	ts.s_pay_status = "1101"
+AND ts.s_uuid = tsd.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c"
+ORDER BY
+ ts.s_org_uuid
+) a,
+(select  @i:=0) t1
+
+    </select>
+
+
+    <select id="getProduct2ProductValue" resultType="java.util.Map">
+
+SELECT
+   a.prodcutId,
+  (@i:=@i+1) 'prodcutValue'
+FROM
+(SELECT
+  DISTINCT
+	tsd.s_sku_uuid 'prodcutId'
+FROM
+	tbusiness_sale ts,
+	tbusiness_sale_detail tsd
+WHERE
+	ts.s_pay_status = "1101"
+AND ts.s_uuid = tsd.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c"
+ORDER BY
+ tsd.s_sku_uuid
+) a,
+(select  @i:=0) t1
+
+    </select>
+
+    <insert id="svaeRecommendResult">
+        INSERT INTO  recommendProduct(userId,productId)
+        VALUES(${userId},${product})
+    </insert>
+
+    <select id="getUserPurchaseDate" resultType="java.util.Map">
+
+SELECT
+	ts.s_org_uuid 'userId',
+	tsd.s_sku_uuid 'productId',
+    DATE_FORMAT(tspo.dt_create_date,"%Y-%m-%d") 'saleDate'
+FROM
+	tbusiness_sale ts,
+	tbusiness_sale_detail tsd,
+  (
+SELECT
+ ts.s_uuid s_sale_uuid,
+ MAX(tspo.dt_create_date) dt_create_date
+FROM
+tbusiness_sale ts,
+tbusiness_sale_pay_order tspo
+WHERE
+ ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_pay_status = "1101"
+AND tspo.s_status = "1101"
+GROUP BY
+  ts.s_uuid
+) tspo
+WHERE
+	ts.s_pay_status = "1101"
+AND ts.s_uuid = tsd.s_sale_uuid
+AND ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c" /*去除测试经销商*/
+AND DATE_FORMAT(tspo.dt_create_date,"%Y-%m") >= DATE_FORMAT(DATE_SUB(NOW(),INTERVAL 7 MONTH),"%Y-%m")
+AND DATE_FORMAT(tspo.dt_create_date,"%Y-%m") != DATE_FORMAT(NOW(),"%Y-%m")
+
+    </select>
+
+<select id="getUserFirstBuyProduct" resultType="java.util.Map" >
+
+SELECT
+	ts.s_org_uuid 'userId',
+	tsd.s_sku_uuid 'productId',
+    MIN(DATE_FORMAT(tspo.dt_create_date,"%Y-%m")) 'firstBuyDate'
+FROM
+	tbusiness_sale ts,
+	tbusiness_sale_detail tsd,
+  (
+SELECT
+ ts.s_uuid s_sale_uuid,
+ MAX(tspo.dt_create_date) dt_create_date
+FROM
+tbusiness_sale ts,
+tbusiness_sale_pay_order tspo
+WHERE
+ ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_pay_status = "1101"
+AND tspo.s_status = "1101"
+GROUP BY
+  ts.s_uuid
+) tspo
+WHERE
+	ts.s_pay_status = "1101"
+AND ts.s_uuid = tsd.s_sale_uuid
+AND ts.s_uuid = tspo.s_sale_uuid
+AND ts.s_orgservice_uuid != "28ee9622-cf62-411a-b2d4-e3bc2920686c" /*去除测试经销商*/
+GROUP BY
+ 	ts.s_org_uuid ,
+	tsd.s_sku_uuid
+
+</select>
+
+
+
+</mapper>
